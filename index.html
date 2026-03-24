@@ -474,6 +474,47 @@ tr.detail-row.open { display: table-row; }
   font-weight: 700;
   margin-left: 4px;
 }
+
+/* ── AGE CONSISTENCY WARNINGS ── */
+.age-badge {
+  display: inline-block;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .3px;
+  white-space: nowrap;
+  cursor: default;
+}
+.age-younger { background: #d32f2f; color: #fff; }
+.age-close   { background: #e65100; color: #fff; }
+
+/* warning in mc-meta column */
+.mc-meta .age-badge { display: block; }
+
+/* warning row indicator in main table */
+.warn-icon {
+  display: inline-block;
+  font-size: 11px;
+  margin-left: 3px;
+  vertical-align: middle;
+  cursor: default;
+}
+
+/* warning block in consolidated line */
+.age-warning-block {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.age-warning-block.warn-younger { background: #fde8e8; border: 1px solid #d32f2f; color: #8b0000; }
+.age-warning-block.warn-close   { background: #fff3e0; border: 1px solid #e65100; color: #7a2e00; }
 </style>
 </head>
 <body>
@@ -910,6 +951,34 @@ function fmtDateOut(v) {
   return s;
 }
 
+// Parse any date value to a JS Date object (returns null if unparseable)
+function parseToDate(v) {
+  const s = fmtDateOut(v);
+  if (!s) return null;
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const d = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, y = parseInt(m[3], 10);
+  if (isNaN(d) || isNaN(mo) || isNaN(y) || y < 1900 || y > 2100) return null;
+  return new Date(y, mo, d);
+}
+
+// Check age consistency between child and candidate parent.
+// Returns null (no data), or { status: 'younger'|'close'|'ok', months: number }
+// 'younger' = parental nascido DEPOIS do filho (erro)
+// 'close'   = parental mais velho por menos de 24 meses (suspeito)
+// 'ok'      = diferença >= 24 meses
+function parentAgeCheck(childRawDate, parentRawDate) {
+  const childDate  = parseToDate(childRawDate);
+  const parentDate = parseToDate(parentRawDate);
+  if (!childDate || !parentDate) return null;
+  // diffMonths > 0 means parent was born BEFORE child (expected)
+  const diffMs     = childDate - parentDate;
+  const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30.4375);
+  if (diffMonths < 0)  return { status: 'younger', months: Math.round(-diffMonths) };
+  if (diffMonths < 24) return { status: 'close',   months: Math.round(diffMonths) };
+  return { status: 'ok', months: Math.round(diffMonths) };
+}
+
 // Remove leading/trailing whitespace and collapse internal spaces
 function cleanStr(v) {
   if (v === null || v === undefined) return '';
@@ -1002,8 +1071,19 @@ function renderTable() {
         ? `<span class="sel-dot sel-dot-partial" title="${hasPai ? 'PAI' : 'MÃE'} confirmado"></span>`
         : '';
 
+    // Age warning icons for table row
+    const ageWarnPai = sel.pai ? parentAgeCheck(row[OC.NASCTO], sel.pai[BC.NASCTO]) : null;
+    const ageWarnMae = sel.mae ? parentAgeCheck(row[OC.NASCTO], sel.mae[BC.NASCTO]) : null;
+    const hasAgeErrYounger = (ageWarnPai && ageWarnPai.status === 'younger') || (ageWarnMae && ageWarnMae.status === 'younger');
+    const hasAgeErrClose   = !hasAgeErrYounger && ((ageWarnPai && ageWarnPai.status === 'close') || (ageWarnMae && ageWarnMae.status === 'close'));
+    const ageWarnIcon = hasAgeErrYounger
+      ? `<span class="warn-icon" style="color:#d32f2f" title="⚠ Parental selecionado mais jovem que o filho!">⚠</span>`
+      : hasAgeErrClose
+        ? `<span class="warn-icon" style="color:#e65100" title="⚡ Diferença de idade muito pequena com parental selecionado">⚡</span>`
+        : '';
+
     html += `<tr class="data-row${openCls}" data-gi="${globalIdx}" onclick="toggleDetail(${globalIdx})">
-      <td style="text-align:center"><span class="row-btn">${isOpen ? '▼' : '▶'}</span>${selDot}</td>
+      <td style="text-align:center"><span class="row-btn">${isOpen ? '▼' : '▶'}</span>${selDot}${ageWarnIcon}</td>
       <td class="mono" style="text-align:right;color:#aaa;font-size:11px">${globalIdx + 1}</td>
       <td class="mono" style="font-weight:700">${esc(tat) || '<span class="empty">—</span>'}</td>
       ${emptyOrVal(reg)}
@@ -1067,17 +1147,19 @@ function renderDetail(row, gi) {
 
   const sel = state.selections[gi] || { pai: null, mae: null };
 
+  const childNasc = row[OC.NASCTO];
+
   return `
   <div class="panels">
-    ${renderPanel('ph-pai-tat', 'PAI por Tatuagem', tatpai, mPaiTat, gi, 'pai', sel.pai)}
-    ${renderPanel('ph-pai-rg',  'PAI por Registro', rgpai,  mPaiRg,  gi, 'pai', sel.pai)}
-    ${renderPanel('ph-mae-tat', 'MÃE por Tatuagem', tatmae, mMaeTat, gi, 'mae', sel.mae)}
-    ${renderPanel('ph-mae-rg',  'MÃE por Registro', rgmae,  mMaeRg,  gi, 'mae', sel.mae)}
+    ${renderPanel('ph-pai-tat', 'PAI por Tatuagem', tatpai, mPaiTat, gi, 'pai', sel.pai, childNasc)}
+    ${renderPanel('ph-pai-rg',  'PAI por Registro', rgpai,  mPaiRg,  gi, 'pai', sel.pai, childNasc)}
+    ${renderPanel('ph-mae-tat', 'MÃE por Tatuagem', tatmae, mMaeTat, gi, 'mae', sel.mae, childNasc)}
+    ${renderPanel('ph-mae-rg',  'MÃE por Registro', rgmae,  mMaeRg,  gi, 'mae', sel.mae, childNasc)}
   </div>
   ${renderConsol(row, gi, sel)}`;
 }
 
-function renderPanel(headCls, title, query, matches, gi, role, selRow) {
+function renderPanel(headCls, title, query, matches, gi, role, selRow, childNasc) {
   const queryTag = query
     ? `<span class="panel-query">${esc(query)}</span>`
     : `<span class="no-query-tag">(vazio)</span>`;
@@ -1101,6 +1183,12 @@ function renderPanel(headCls, title, query, matches, gi, role, selRow) {
       const nasc = r[BC.NASCTO]     != null ? fmtDateOut(r[BC.NASCTO]) : '—';
       const raca = r[BC.RACA]       != null ? String(r[BC.RACA])       : '—';
       const pag  = r[BC.PAGINA]     != null ? `p.${String(r[BC.PAGINA])}` : '';
+      const ageCheck = parentAgeCheck(childNasc, r[BC.NASCTO]);
+      const ageBadge = ageCheck && ageCheck.status === 'younger'
+        ? `<span class="age-badge age-younger" title="Parental nascido ${ageCheck.months} meses DEPOIS do filho — checar datas">⚠ MAIS JOVEM QUE O FILHO</span>`
+        : ageCheck && ageCheck.status === 'close'
+          ? `<span class="age-badge age-close" title="Parental apenas ${ageCheck.months} meses mais velho — pouco provável">⚡ Só ${ageCheck.months}m de dif.</span>`
+          : '';
       return `<div class="mc ${confCls}${isSel ? ' sel-card' : ''}">
         <div class="mc-score">
           <span class="sc ${scCls}">${pct(m.score)}</span>
@@ -1110,6 +1198,7 @@ function renderPanel(headCls, title, query, matches, gi, role, selRow) {
           <span class="src ${srcCls}">${esc(r._sourceLabel)}</span>
           ${lineNum ? `<span class="line-badge">${lineNum}</span>` : ''}
           ${pag    ? `<span class="line-badge">${esc(pag)}</span>` : ''}
+          ${ageBadge}
         </div>
         <div class="mc-body">
           <div class="mc-fields">
@@ -1200,6 +1289,19 @@ function renderConsol(orig, gi, sel) {
   const c_rgmae    = sel.mae ? fmtRg(o_rgmae, get(sel.mae, BC.PATRIMONIO))          : null;
   const c_raca_mae = sel.mae ? cleanStr(get(sel.mae, BC.RACA))                      : null;
 
+  // Age consistency checks for selected parents
+  const ageCheckPai = sel.pai ? parentAgeCheck(orig[OC.NASCTO], sel.pai[BC.NASCTO]) : null;
+  const ageCheckMae = sel.mae ? parentAgeCheck(orig[OC.NASCTO], sel.mae[BC.NASCTO]) : null;
+
+  const renderAgeWarn = (check, role) => {
+    if (!check || check.status === 'ok') return '';
+    if (check.status === 'younger')
+      return `<div class="age-warning-block warn-younger">⚠ ${role} selecionado(a) nasceu ${check.months} meses DEPOIS do filho — verificar datas!</div>`;
+    if (check.status === 'close')
+      return `<div class="age-warning-block warn-close">⚡ ${role} selecionado(a) tem apenas ${check.months} meses a mais que o filho — improvável, verificar!</div>`;
+    return '';
+  };
+
   const field = (label, orig, confirmed) => {
     const isFilled   = confirmed !== null;
     const isChanged  = isFilled && orig !== confirmed;
@@ -1226,6 +1328,8 @@ function renderConsol(orig, gi, sel) {
       <button class="copy-btn" onclick="copyConsol(${gi})">📋 Copiar TSV</button>
     </div>
     <div class="consol-body">
+      ${renderAgeWarn(ageCheckPai, 'PAI')}
+      ${renderAgeWarn(ageCheckMae, 'MÃE')}
       <div class="consol-fields">
         ${simpleField('TATUAGEM', o_tat)}
         ${simpleField('REGISTRO', o_reg)}
