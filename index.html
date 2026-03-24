@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConsolidaPuruna</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  background: #eef1f6;
+  color: #1a1a1a;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── HEADER ── */
+#header {
+  background: #1b3a5f;
+  color: #fff;
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  z-index: 10;
+}
+#header h1 { font-size: 15px; font-weight: 700; letter-spacing: .4px; }
+#header-stats { margin-left: auto; font-size: 11px; opacity: .75; display: flex; gap: 16px; }
+
+/* ── LOADER ── */
+#loader {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 40px;
+}
+#loader h2 { color: #1b3a5f; font-size: 18px; font-weight: 600; }
+#loader p { color: #666; font-size: 13px; }
+.file-zones { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+
+.fzone {
+  border: 2px dashed #b0b8c8;
+  border-radius: 8px;
+  padding: 18px 22px;
+  text-align: center;
+  cursor: pointer;
+  width: 220px;
+  transition: border-color .18s, background .18s;
+  position: relative;
+}
+.fzone:hover, .fzone.drag { border-color: #1b3a5f; background: #e4ebf5; }
+.fzone input { display: none; }
+.fzone .fz-icon { font-size: 26px; margin-bottom: 6px; }
+.fzone .fz-label { font-weight: 700; font-size: 12px; color: #1b3a5f; }
+.fzone .fz-sub { color: #888; font-size: 11px; margin-top: 3px; }
+.fzone .fz-name { margin-top: 6px; font-size: 11px; color: #22a06b; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fzone.loaded { border-color: #22a06b; background: #eafaf3; }
+.fzone.loaded .fz-icon::after { content: ' ✓'; font-size: 14px; color: #22a06b; }
+
+#load-btn {
+  padding: 10px 36px;
+  background: #1b3a5f;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: .35;
+  pointer-events: none;
+  transition: opacity .18s, background .18s;
+}
+#load-btn.ready { opacity: 1; pointer-events: auto; }
+#load-btn.ready:hover { background: #254e82; }
+
+#progress-msg { color: #555; font-size: 13px; display: none; }
+
+/* ── MAIN APP ── */
+#app { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+
+/* ── TOOLBAR ── */
+#toolbar {
+  background: #fff;
+  border-bottom: 1px solid #d4dae6;
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+#search-input {
+  flex: 1;
+  max-width: 280px;
+  padding: 5px 10px;
+  border: 1px solid #ccd;
+  border-radius: 4px;
+  font-size: 13px;
+}
+#search-input:focus { outline: none; border-color: #1b3a5f; box-shadow: 0 0 0 2px #d0dff0; }
+#search-label { font-size: 11px; color: #777; margin-right: 4px; }
+
+.sep { width: 1px; height: 22px; background: #dde; margin: 0 4px; }
+
+.page-nav { display: flex; align-items: center; gap: 3px; margin-left: auto; }
+.page-nav button {
+  padding: 4px 9px;
+  border: 1px solid #ccd;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background .12s;
+}
+.page-nav button:hover:not(:disabled) { background: #eef1f6; }
+.page-nav button:disabled { opacity: .4; cursor: default; }
+#page-info { font-size: 12px; color: #666; padding: 0 6px; min-width: 110px; text-align: center; }
+
+#expand-all-btn {
+  padding: 4px 10px;
+  border: 1px solid #1b3a5f;
+  color: #1b3a5f;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+#expand-all-btn:hover { background: #eef1f6; }
+
+/* ── TABLE ── */
+#table-wrap { flex: 1; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  position: sticky; top: 0;
+  background: #243f6b;
+  color: #fff;
+  padding: 7px 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  border-right: 1px solid rgba(255,255,255,.12);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 5;
+}
+thead th:first-child { width: 44px; }
+
+tbody tr.data-row { border-bottom: 1px solid #e4e9f2; cursor: pointer; }
+tbody tr.data-row:nth-child(4n+1) td { background: #fff; }
+tbody tr.data-row:nth-child(4n+3) td { background: #f7f9fc; }
+tbody tr.data-row:hover td { background: #e8f0ff !important; }
+tbody tr.data-row.open td { background: #d8e5ff !important; font-weight: 600; }
+
+td {
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+td.mono { font-family: 'Consolas', 'Cascadia Code', monospace; }
+td.empty { color: #bbb; font-style: italic; }
+
+.row-btn {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid #1b3a5f;
+  color: #1b3a5f;
+  border-radius: 3px;
+  font-size: 11px;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+  transition: background .12s;
+}
+.row-btn:hover { background: #1b3a5f; color: #fff; }
+tr.open .row-btn { background: #1b3a5f; color: #fff; }
+
+/* ── DETAIL ROW ── */
+tr.detail-row { display: none; }
+tr.detail-row.open { display: table-row; }
+.detail-cell {
+  padding: 14px 16px 16px;
+  background: #e8eef8;
+  border-bottom: 3px solid #1b3a5f;
+}
+
+/* ── PANELS ── */
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+
+@media (max-width: 900px) {
+  .panels { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #cdd5e4;
+  overflow: hidden;
+  min-width: 0;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+.ph-pai-tat { background: #3a6bcf; }
+.ph-pai-rg  { background: #5c4ea0; }
+.ph-mae-tat { background: #c04040; }
+.ph-mae-rg  { background: #8c3a7a; }
+
+.panel-query {
+  font-family: monospace;
+  background: rgba(255,255,255,.22);
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  margin-left: 2px;
+}
+.no-query-tag { opacity: .65; font-style: italic; font-size: 10px; }
+
+.panel-body { padding: 8px; max-height: 320px; overflow-y: auto; }
+
+/* match cards */
+.mc {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 5px;
+  border-radius: 6px;
+  border: 1px solid #e0e6f0;
+  border-left: 4px solid #ccc;
+  background: #fafbfd;
+  transition: box-shadow .12s;
+}
+.mc:last-child { margin-bottom: 0; }
+.mc:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.mc.conf-hi  { border-left-color: #22a06b; background: #f5fdf9; }
+.mc.conf-mid { border-left-color: #d98000; background: #fdfaf3; }
+.mc.conf-lo  { border-left-color: #bb3b26; background: #fdf5f5; }
+.mc.sel-card { outline: 2px solid #22a06b; outline-offset: 1px; }
+
+/* score column */
+.mc-score {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 44px;
+  padding-top: 1px;
+}
+.sc {
+  width: 44px;
+  padding: 3px 0;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: .3px;
+}
+.sc-hi  { background: #22a06b; }
+.sc-mid { background: #d98000; }
+.sc-lo  { background: #bb3b26; }
+.sc-bar { width: 44px; height: 4px; background: #e0e0e0; border-radius: 2px; overflow: hidden; }
+.sc-bar-fill { height: 100%; border-radius: 2px; }
+.sc-bar-fill.sc-hi  { background: #22a06b; }
+.sc-bar-fill.sc-mid { background: #d98000; }
+.sc-bar-fill.sc-lo  { background: #bb3b26; }
+
+/* meta badges */
+.mc-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.src {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: #fff;
+  letter-spacing: .3px;
+}
+.src-2016 { background: #5264b4; }
+.src-alex  { background: #00838f; }
+.line-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #888;
+  background: #eff0f3;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  letter-spacing: .2px;
+}
+
+.mc-body { flex: 1; min-width: 0; }
+.mc-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.fc {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #edf0f7;
+  font-family: monospace;
+  white-space: nowrap;
+}
+.fc .fk { font-size: 9px; color: #777; margin-right: 2px; font-family: sans-serif; font-weight: 600; }
+.fc.hi { background: #fff8d6; border: 1px solid #e8c200; font-weight: 700; font-size: 12px; }
+.fc.hi .fk { color: #9a7200; }
+
+.mc-actions { display: flex; justify-content: flex-end; }
+.use-btn {
+  padding: 4px 12px;
+  border: 1.5px solid #22a06b;
+  color: #22a06b;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.use-btn:hover { background: #22a06b; color: #fff; }
+.use-btn.on { background: #22a06b; color: #fff; border-color: #22a06b; }
+
+/* row selection dot */
+.sel-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #22a06b;
+  margin-left: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.sel-dot-partial { background: #d98000; }
+
+.no-match-msg { padding: 10px; text-align: center; color: #aaa; font-style: italic; font-size: 11px; }
+
+/* extra-matches collapse */
+.mc-extra.hidden { display: none; }
+.extra-toggle {
+  display: block; width: 100%; text-align: center;
+  padding: 4px 8px; margin: 5px 0 2px;
+  font-size: 11px; font-weight: 600; color: #1b3a5f;
+  background: #eef2fa; border: 1px dashed #aab8d4;
+  border-radius: 4px; cursor: pointer;
+}
+.extra-toggle:hover { background: #dce6f8; }
+
+/* column filter row */
+#filter-row th { padding: 3px 5px; background: #1a3358; vertical-align: middle; }
+.fi {
+  width: 100%; padding: 3px 5px; font-size: 11px;
+  border: 1px solid rgba(255,255,255,.25); border-radius: 3px;
+  background: rgba(255,255,255,.13); color: #fff;
+}
+.fi::placeholder { color: rgba(255,255,255,.38); font-style: italic; }
+.fi:focus { outline: none; background: rgba(255,255,255,.26); border-color: rgba(255,255,255,.55); }
+.fi option { color: #222; background: #fff; }
+
+/* ── CONSOLIDATED LINE ── */
+.consol {
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #cdd5e4;
+  overflow: hidden;
+}
+.consol-head {
+  background: #1a5c3c;
+  color: #fff;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.copy-btn {
+  padding: 3px 14px;
+  background: rgba(255,255,255,.2);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,.4);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+.copy-btn:hover { background: rgba(255,255,255,.35); }
+.consol-body { padding: 10px; }
+.consol-fields { display: flex; flex-wrap: wrap; gap: 6px; }
+.cf {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+  border: 1px solid #dde;
+  border-radius: 4px;
+  background: #f8f9fc;
+  min-width: 90px;
+}
+.cf .ck { font-size: 9px; color: #888; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+.cf .cv { font-family: monospace; font-size: 12px; font-weight: 700; color: #333; }
+.cf.filled { background: #eaf7f2; border-color: #22a06b; }
+.cf.filled .cv { color: #1a5c3c; }
+.cf.changed { background: #fff8e0; border-color: #e8a800; }
+.cf.changed .cv { color: #7a5800; }
+.cf.missing-val .cv { color: #bbb; font-style: italic; font-weight: 400; }
+
+/* ── MODE B (free search) ── */
+#free-search-panel {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+#free-search-panel.active { display: block; }
+.free-results { display: flex; flex-direction: column; gap: 6px; }
+.free-card {
+  background: #fff;
+  border: 1px solid #cdd5e4;
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.free-card .fc-src { font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 3px; color: #fff; flex-shrink: 0; }
+.free-card .fc-fields { display: flex; flex-wrap: wrap; gap: 5px; }
+.free-title { font-weight: 700; font-size: 13px; color: #1b3a5f; margin-bottom: 10px; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #bcc8da; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #8899b4; }
+
+.badge-info {
+  display: inline-block;
+  background: #e0e8f8;
+  color: #1b3a5f;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <h1>🐄 ConsolidaPuruna</h1>
+  <span style="font-size:11px;opacity:.6">Conferência de Tatuagem e Registro de Pais/Mães</span>
+  <div id="header-stats"></div>
+</div>
+
+<!-- LOADER -->
+<div id="loader">
+  <h2>Carregar planilhas</h2>
+  <p>Selecione ou arraste os três arquivos para começar.</p>
+  <div class="file-zones">
+    <label class="fzone" id="fz-orig" ondragover="handleDrag(event,'orig')" ondragleave="handleDragLeave(event,'orig')" ondrop="handleDrop(event,'orig')">
+      <input type="file" id="f-orig" accept=".xlsx,.xls" onchange="fileSelected('orig',this)">
+      <div class="fz-icon">📋</div>
+      <div class="fz-label">ORIGINAL CORRIGIDO</div>
+      <div class="fz-sub">Planilha principal (Rebanho)</div>
+      <div class="fz-name" id="fn-orig">Nenhum arquivo</div>
+    </label>
+    <label class="fzone" id="fz-b1" ondragover="handleDrag(event,'b1')" ondragleave="handleDragLeave(event,'b1')" ondrop="handleDrop(event,'b1')">
+      <input type="file" id="f-b1" accept=".xlsx,.xls" onchange="fileSelected('b1',this)">
+      <div class="fz-icon">📗</div>
+      <div class="fz-label">NASCIMENTOS 2016–2024</div>
+      <div class="fz-sub">Planilha de nascimentos</div>
+      <div class="fz-name" id="fn-b1">Nenhum arquivo</div>
+    </label>
+    <label class="fzone" id="fz-b2" ondragover="handleDrag(event,'b2')" ondragleave="handleDragLeave(event,'b2')" ondrop="handleDrop(event,'b2')">
+      <input type="file" id="f-b2" accept=".xlsx,.xls" onchange="fileSelected('b2',this)">
+      <div class="fz-icon">📘</div>
+      <div class="fz-label">NASCIMENTOS 1999–2025 ALEXANDRE</div>
+      <div class="fz-sub">Planilha Alexandre</div>
+      <div class="fz-name" id="fn-b2">Nenhum arquivo</div>
+    </label>
+  </div>
+  <button id="load-btn" onclick="startLoading()">Carregar e processar</button>
+  <div id="progress-msg">⏳ Processando...</div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+
+  <!-- TOOLBAR -->
+  <div id="toolbar">
+    <button id="expand-all-btn" onclick="toggleExpandAll()">Expandir visível</button>
+    <button onclick="clearFilters()" style="padding:4px 10px;border:1px solid #ccd;background:#fff;border-radius:4px;font-size:11px;cursor:pointer;" title="Limpar todos os filtros de coluna">✕ Limpar filtros</button>
+    <div class="sep"></div>
+    <div class="page-nav">
+      <button id="btn-first" onclick="goPage(0)">«</button>
+      <button id="btn-prev"  onclick="goPage(state.page - 1)">‹</button>
+      <span style="font-size:11px;color:#666;white-space:nowrap">Pág.</span>
+      <input id="page-input" type="number" min="1" value="1"
+        onkeydown="onPageInput(event)"
+        onblur="onPageInput({key:'Enter',target:this})"
+        style="width:52px;padding:3px 5px;border:1px solid #ccd;border-radius:4px;font-size:12px;text-align:center">
+      <span id="page-total" style="font-size:11px;color:#666;white-space:nowrap"></span>
+      <button id="btn-next"  onclick="goPage(state.page + 1)">›</button>
+      <button id="btn-last"  onclick="goPage(lastPage())">»</button>
+    </div>
+  </div>
+
+  <!-- TABLE (mode C) -->
+  <div id="table-wrap">
+    <table id="main-table">
+      <thead>
+        <tr>
+          <th style="width:38px"></th>
+          <th style="width:46px;text-align:right;color:rgba(255,255,255,.5)">#</th>
+          <th style="width:70px">TATUAGEM</th>
+          <th style="width:90px">REGISTRO</th>
+          <th style="width:120px">PROPRIETÁRIO</th>
+          <th style="width:48px">SEXO</th>
+          <th style="width:88px">NASCTO</th>
+          <th style="width:80px">TAT_PAI</th>
+          <th style="width:90px">RG_PAI</th>
+          <th style="width:80px">TAT_MÃE</th>
+          <th style="width:90px">RG_MÃE</th>
+          <th style="width:100px">CRIADOR</th>
+          <th style="width:80px">PELAGEM</th>
+          <th style="min-width:80px">PAI</th>
+          <th style="min-width:80px">MÃE</th>
+        </tr>
+        <tr id="filter-row">
+          <th></th><th></th>
+          <th><input class="fi" data-col="9"  placeholder="TAT…"    oninput="onColFilter(9,this.value)"></th>
+          <th><input class="fi" data-col="8"  placeholder="REG…"    oninput="onColFilter(8,this.value)"></th>
+          <th><input class="fi" data-col="3"  placeholder="prop…"   oninput="onColFilter(3,this.value)"></th>
+          <th><select class="fi" data-col="10" onchange="onColFilter(10,this.value)"><option value="">todos</option></select></th>
+          <th><input class="fi" data-col="11" placeholder="data…"   oninput="onColFilter(11,this.value)"></th>
+          <th><input class="fi" data-col="13" placeholder="TAT…"    oninput="onColFilter(13,this.value)"></th>
+          <th><input class="fi" data-col="14" placeholder="RG…"     oninput="onColFilter(14,this.value)"></th>
+          <th><input class="fi" data-col="15" placeholder="TAT…"    oninput="onColFilter(15,this.value)"></th>
+          <th><input class="fi" data-col="16" placeholder="RG…"     oninput="onColFilter(16,this.value)"></th>
+          <th><input class="fi" data-col="1"  placeholder="criador…" oninput="onColFilter(1,this.value)"></th>
+          <th><select class="fi" data-col="17" onchange="onColFilter(17,this.value)"><option value="">todas</option></select></th>
+          <th><input class="fi" data-col="20" placeholder="pai…"    oninput="onColFilter(20,this.value)"></th>
+          <th><input class="fi" data-col="21" placeholder="mãe…"    oninput="onColFilter(21,this.value)"></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+
+</div><!-- #app -->
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// COLUMN INDICES
+// ─────────────────────────────────────────────────────────────
+const OC = {
+  ID:0, CRIADOR_C:1, CRIADOR:2, PROP_C:3, PROP:4, PROP_NOME:5,
+  PROV:6, CAT:7, REGISTRO:8, TATUAGEM:9, SEXO:10,
+  NASCTO:11, PN:12, TAT_PAI:13, RG_PAI:14, TAT_MAE:15, RG_MAE:16,
+  PELAGEM:17, CHIFRE:18, PRODUTO:19, PAI:20, MAE:21
+};
+// Birth books share same indices for key columns
+const BC = {
+  ANO:0, PAGINA:1, ORDEM:2, TATUAGEM:3, PELAGEM:4, RACA:5,
+  PAI:6, MAE:7, SEXO:8, NASCTO:9, PESO:10, ASPAS:11, PATRIMONIO:12
+};
+
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+const state = {
+  original: [],      // rows from ORIGINAL sheet "Rebanho"
+  filtered: [],      // filtered subset for display
+  births: [],        // combined birth book rows (tagged with .source)
+  tatIdx: new Map(), // normTat → [rows]
+  patIdx: new Map(), // integer → [rows]
+  page: 0,
+  PAGE_SIZE: 40,
+  expandedSet: new Set(),   // indices of open detail rows (filtered index)
+  selections: {},           // filteredIdx → { pai: row|null, mae: row|null }
+  searchTerm: '',
+  files: { orig: null, b1: null, b2: null }
+};
+
+// ─────────────────────────────────────────────────────────────
+// FILE LOADING UI
+// ─────────────────────────────────────────────────────────────
+function fileSelected(key, input) {
+  const file = input.files[0];
+  if (!file) return;
+  state.files[key] = file;
+  document.getElementById('fn-' + key).textContent = file.name;
+  document.getElementById('fz-' + key).classList.add('loaded');
+  checkReady();
+}
+function handleDrag(e, key) { e.preventDefault(); document.getElementById('fz-' + key).classList.add('drag'); }
+function handleDragLeave(e, key) { document.getElementById('fz-' + key).classList.remove('drag'); }
+function handleDrop(e, key) {
+  e.preventDefault();
+  document.getElementById('fz-' + key).classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  state.files[key] = file;
+  document.getElementById('fn-' + key).textContent = file.name;
+  document.getElementById('fz-' + key).classList.add('loaded');
+  // also set the input (for completeness)
+  checkReady();
+}
+function checkReady() {
+  const btn = document.getElementById('load-btn');
+  if (state.files.orig && state.files.b1 && state.files.b2) btn.classList.add('ready');
+  else btn.classList.remove('ready');
+}
+
+// ─────────────────────────────────────────────────────────────
+// LOADING & PARSING
+// ─────────────────────────────────────────────────────────────
+function startLoading() {
+  document.getElementById('progress-msg').style.display = 'block';
+  document.getElementById('load-btn').style.display = 'none';
+  setTimeout(doLoad, 50);
+}
+
+async function doLoad() {
+  try {
+    const setMsg = m => document.getElementById('progress-msg').textContent = '⏳ ' + m;
+
+    setMsg('Lendo ORIGINAL CORRIGIDO…');
+    await tick();
+    const origData = await readXlsx(state.files.orig);
+    const origSheet = findSheet(origData, ['Rebanho', 'rebanho', 'Planilha1']);
+    state.original = sheetToRows(origData.Sheets[origSheet], 1);  // skip header row 0
+
+    setMsg('Lendo NASCIMENTOS 2016–2024…');
+    await tick();
+    const b1Data = await readXlsx(state.files.b1);
+    const b1Sheet = findSheet(b1Data, ['Planilha1', 'Nascimentos', 'nascimentos']);
+    const b1Rows = sheetToRows(b1Data.Sheets[b1Sheet], 1);
+    b1Rows.forEach(r => { r._source = '2016'; r._sourceLabel = '2016–2024'; });
+
+    setMsg('Lendo NASCIMENTOS 1999–2025 ALEXANDRE…');
+    await tick();
+    const b2Data = await readXlsx(state.files.b2);
+    const b2Sheet = findSheet(b2Data, ['Livros Nascimentos', 'Planilha1', 'Nascimentos']);
+    const b2Rows = sheetToRows(b2Data.Sheets[b2Sheet], 1);
+    b2Rows.forEach(r => { r._source = 'alex'; r._sourceLabel = 'Alexandre'; });
+
+    setMsg('Construindo índices de busca…');
+    await tick();
+    state.births = [...b1Rows, ...b2Rows];
+    buildIndexes();
+
+    setMsg('Renderizando…');
+    await tick();
+    state.filtered = state.original.slice();
+    initFilterRow();
+    renderApp();
+
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+
+    document.getElementById('header-stats').innerHTML =
+      `<span>${state.original.length.toLocaleString('pt-BR')} animais na ORIGINAL</span>` +
+      `<span>${b1Rows.length.toLocaleString('pt-BR')} nascimentos 2016</span>` +
+      `<span>${b2Rows.length.toLocaleString('pt-BR')} nascimentos Alexandre</span>`;
+
+  } catch(err) {
+    document.getElementById('progress-msg').textContent = '❌ Erro: ' + err.message;
+    console.error(err);
+  }
+}
+
+function tick() { return new Promise(r => setTimeout(r, 0)); }
+
+function readXlsx(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        resolve(wb);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('Erro lendo arquivo'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function findSheet(wb, candidates) {
+  for (const c of candidates) {
+    if (wb.SheetNames.includes(c)) return c;
+  }
+  return wb.SheetNames[0];
+}
+
+function sheetToRows(sheet, skipRows) {
+  const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: false, dateNF: 'yyyy-mm-dd' });
+  const result = [];
+  data.slice(skipRows).forEach((r, i) => {
+    if (r.some(v => v !== null && v !== '')) {
+      r._lineNum = i + skipRows + 1; // Excel row number (1-indexed, header = row 1)
+      result.push(r);
+    }
+  });
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────
+// INDEXES & FUZZY MATCHING
+// ─────────────────────────────────────────────────────────────
+function buildIndexes() {
+  state.tatIdx.clear();
+  state.patIdx.clear();
+  for (const r of state.births) {
+    const t = normTat(r[BC.TATUAGEM]);
+    if (t) {
+      if (!state.tatIdx.has(t)) state.tatIdx.set(t, []);
+      state.tatIdx.get(t).push(r);
+    }
+    const p = extractNum(r[BC.PATRIMONIO]);
+    if (p !== null) {
+      if (!state.patIdx.has(p)) state.patIdx.set(p, []);
+      state.patIdx.get(p).push(r);
+    }
+  }
+}
+
+function normTat(s) {
+  if (s === null || s === undefined || s === '') return '';
+  return String(s).toUpperCase().trim().replace(/\s+/g, '');
+}
+
+function extractNum(s) {
+  if (s === null || s === undefined || s === '') return null;
+  const m = String(s).replace(/[^0-9]/g, '');
+  if (!m) return null;
+  const n = parseInt(m, 10);
+  return isNaN(n) ? null : n;
+}
+
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const prev = Array.from({length: b.length + 1}, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = a[i-1] === b[j-1]
+        ? prev[j-1]
+        : 1 + Math.min(prev[j], curr[j-1], prev[j-1]);
+    }
+    prev.splice(0, prev.length, ...curr);
+  }
+  return prev[b.length];
+}
+
+// Parse "A0551" → { prefix:'A', num:551 }
+function parseTatParts(s) {
+  const m = s.match(/^([A-Z]*)0*(\d+)([A-Z]*)$/);
+  if (!m) return null;
+  return { prefix: m[1], num: parseInt(m[2], 10), suffix: m[3] };
+}
+
+function tatScore(q, c) {
+  q = normTat(q); c = normTat(c);
+  if (!q || !c) return 0;
+  if (q === c) return 1.0;
+  // compare ignoring leading zeros in numeric part
+  const pq = parseTatParts(q), pc = parseTatParts(c);
+  if (pq && pc && pq.prefix === pc.prefix && pq.num === pc.num && pq.suffix === pc.suffix) return 0.97;
+  // substring
+  if (c.includes(q) || q.includes(c)) return 0.85;
+  // levenshtein
+  const dist = levenshtein(q, c);
+  const score = 1 - dist / Math.max(q.length, c.length);
+  return score >= 0.4 ? score : 0;
+}
+
+function rgPatScore(rg, patNum) {
+  const qn = extractNum(rg);
+  if (qn === null || patNum === null) return 0;
+  if (qn === patNum) return 1.0;
+  const d = Math.abs(qn - patNum);
+  if (d <= 1)  return 0.93;
+  if (d <= 3)  return 0.82;
+  if (d <= 10) return 0.60;
+  if (d <= 30) return 0.40;
+  return 0;
+}
+
+const SCORE_THRESHOLD_TAT = 0.45;
+const SCORE_THRESHOLD_PAT = 0.40;
+const MAX_RESULTS = 6;
+
+function searchByTat(query) {
+  const q = normTat(query);
+  if (!q) return [];
+
+  const results = [];
+  const seen = new WeakSet();
+
+  // Exact index lookup first
+  if (state.tatIdx.has(q)) {
+    for (const r of state.tatIdx.get(q)) {
+      results.push({ row: r, score: 1.0 });
+      seen.add(r);
+    }
+  }
+
+  // Fuzzy scan if we need more
+  if (results.length < MAX_RESULTS) {
+    for (const r of state.births) {
+      if (seen.has(r)) continue;
+      const s = tatScore(q, r[BC.TATUAGEM]);
+      if (s >= SCORE_THRESHOLD_TAT) {
+        results.push({ row: r, score: s });
+        seen.add(r);
+      }
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, MAX_RESULTS);
+}
+
+function searchByRg(rg) {
+  const qn = extractNum(rg);
+  if (qn === null) return [];
+
+  const results = [];
+  const seen = new WeakSet();
+
+  for (let d = 0; d <= 30; d++) {
+    for (const key of (d === 0 ? [qn] : [qn - d, qn + d])) {
+      if (state.patIdx.has(key)) {
+        for (const r of state.patIdx.get(key)) {
+          if (!seen.has(r)) {
+            const s = rgPatScore(rg, key);
+            if (s >= SCORE_THRESHOLD_PAT) {
+              results.push({ row: r, score: s });
+              seen.add(r);
+            }
+          }
+        }
+      }
+    }
+    if (results.length >= MAX_RESULTS) break;
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, MAX_RESULTS);
+}
+
+// ─────────────────────────────────────────────────────────────
+// RENDERING HELPERS
+// ─────────────────────────────────────────────────────────────
+
+// Display format: yyyy-mm-dd → dd/mm/aaaa (for table cells)
+function fmtDate(v) {
+  return fmtDateOut(v);
+}
+
+// Canonical output date: always dd/mm/aaaa
+function fmtDateOut(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  // yyyy-mm-dd
+  const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m1) return `${m1[3]}/${m1[2]}/${m1[1]}`;
+  // dd/mm/yyyy already
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  // mm/dd/yyyy (US)
+  const m2 = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m2) return `${m2[2]}/${m2[1]}/${m2[3]}`;
+  return s;
+}
+
+// Remove leading/trailing whitespace and collapse internal spaces
+function cleanStr(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).trim().replace(/\s+/g, ' ');
+}
+
+// Format RG output: apply prefix (FM if none found in original) + zero-pad to 5 digits
+function fmtRg(originalRg, birthPat) {
+  const num = extractNum(birthPat);
+  if (num === null) return cleanStr(String(birthPat || ''));
+  const padded = String(num).padStart(5, '0');
+  const orig = (originalRg || '').trim();
+  const prefixMatch = orig.match(/^([A-Za-z]+)/);
+  const prefix = prefixMatch ? prefixMatch[1].toUpperCase() : 'FM';
+  return prefix + padded;
+}
+
+// Toggle extra matches dropdown
+function toggleExtra(btn) {
+  const extra = btn.nextElementSibling;
+  const isHidden = extra.classList.contains('hidden');
+  extra.classList.toggle('hidden');
+  const n = extra.querySelectorAll('.mc').length;
+  btn.textContent = isHidden
+    ? `▲ recolher ${n} resultado${n>1?'s':''}`
+    : `▼ +${n} outro${n>1?'s':''} resultado${n>1?'s':''}`;
+}
+
+function scClass(s) {
+  if (s >= 0.85) return 'sc-hi';
+  if (s >= 0.60) return 'sc-mid';
+  return 'sc-lo';
+}
+
+function pct(s) { return Math.round(s * 100) + '%'; }
+
+function esc(s) {
+  if (s === null || s === undefined || s === '') return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function cellVal(row, col) {
+  const v = row[col];
+  return (v === null || v === undefined || v === '') ? null : String(v).trim();
+}
+
+// ─────────────────────────────────────────────────────────────
+// MAIN TABLE RENDERING
+// ─────────────────────────────────────────────────────────────
+function renderApp() {
+  renderTable();
+  updatePagination();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tbody');
+  const start = state.page * state.PAGE_SIZE;
+  const end   = Math.min(start + state.PAGE_SIZE, state.filtered.length);
+  const rows  = state.filtered.slice(start, end);
+
+  let html = '';
+  rows.forEach((row, localIdx) => {
+    const globalIdx = start + localIdx;
+    const isOpen = state.expandedSet.has(globalIdx);
+    const openCls = isOpen ? ' open' : '';
+
+    const tat    = cellVal(row, OC.TATUAGEM)  || '';
+    const reg    = cellVal(row, OC.REGISTRO)  || '';
+    const prop   = cellVal(row, OC.PROP_C)    || '';
+    const sexo   = cellVal(row, OC.SEXO)      || '';
+    const nasc   = fmtDate(row[OC.NASCTO])    || '';
+    const tatpai = cellVal(row, OC.TAT_PAI)   || '';
+    const rgpai  = cellVal(row, OC.RG_PAI)    || '';
+    const tatmae = cellVal(row, OC.TAT_MAE)   || '';
+    const rgmae  = cellVal(row, OC.RG_MAE)    || '';
+    const cria   = cellVal(row, OC.CRIADOR_C) || cellVal(row, OC.CRIADOR) || '';
+    const pel    = cellVal(row, OC.PELAGEM)   || '';
+    const pai    = cellVal(row, OC.PAI)        || '';
+    const mae    = cellVal(row, OC.MAE)        || '';
+
+    const emptyOrVal = (v) => v
+      ? `<td class="mono">${esc(v)}</td>`
+      : `<td class="empty">—</td>`;
+
+    const sel = state.selections[globalIdx] || {};
+    const hasPai = !!sel.pai, hasMae = !!sel.mae;
+    const selDot = (hasPai && hasMae)
+      ? `<span class="sel-dot" title="PAI e MÃE confirmados"></span>`
+      : (hasPai || hasMae)
+        ? `<span class="sel-dot sel-dot-partial" title="${hasPai ? 'PAI' : 'MÃE'} confirmado"></span>`
+        : '';
+
+    html += `<tr class="data-row${openCls}" data-gi="${globalIdx}" onclick="toggleDetail(${globalIdx})">
+      <td style="text-align:center"><span class="row-btn">${isOpen ? '▼' : '▶'}</span>${selDot}</td>
+      <td class="mono" style="text-align:right;color:#aaa;font-size:11px">${globalIdx + 1}</td>
+      <td class="mono" style="font-weight:700">${esc(tat) || '<span class="empty">—</span>'}</td>
+      ${emptyOrVal(reg)}
+      <td title="${esc(prop)}">${esc(prop)}</td>
+      <td>${esc(sexo)}</td>
+      <td class="mono">${esc(nasc)}</td>
+      ${emptyOrVal(tatpai)}
+      ${emptyOrVal(rgpai)}
+      ${emptyOrVal(tatmae)}
+      ${emptyOrVal(rgmae)}
+      <td title="${esc(cria)}">${esc(cria)}</td>
+      <td>${esc(pel)}</td>
+      <td title="${esc(pai)}">${esc(pai)}</td>
+      <td title="${esc(mae)}">${esc(mae)}</td>
+    </tr>`;
+
+    html += `<tr class="detail-row${openCls}" data-gi="${globalIdx}">
+      <td colspan="15" class="detail-cell" id="detail-${globalIdx}">
+        ${isOpen ? renderDetail(row, globalIdx) : ''}
+      </td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+}
+
+// ─────────────────────────────────────────────────────────────
+// DETAIL / PANELS
+// ─────────────────────────────────────────────────────────────
+function mergeDedup(matches) {
+  const seen = new WeakSet();
+  return matches
+    .filter(m => { if (seen.has(m.row)) return false; seen.add(m.row); return true; })
+    .sort((a, b) => b.score - a.score);
+}
+
+function tryAutoSelect(gi, origRow, mPaiTat, mPaiRg, mMaeTat, mMaeRg) {
+  if (state.selections[gi]) return; // never override existing
+  const paiAll = mergeDedup([...mPaiTat, ...mPaiRg]);
+  const maeAll = mergeDedup([...mMaeTat, ...mMaeRg]);
+  const sel = { pai: null, mae: null };
+  // Always pre-select best available match above search threshold
+  if (paiAll.length > 0) sel.pai = paiAll[0].row;
+  if (maeAll.length > 0) sel.mae = maeAll[0].row;
+  if (sel.pai || sel.mae) state.selections[gi] = sel;
+}
+
+function renderDetail(row, gi) {
+  const tatpai = cellVal(row, OC.TAT_PAI);
+  const rgpai  = cellVal(row, OC.RG_PAI);
+  const tatmae = cellVal(row, OC.TAT_MAE);
+  const rgmae  = cellVal(row, OC.RG_MAE);
+
+  const mPaiTat = searchByTat(tatpai);
+  const mPaiRg  = searchByRg(rgpai);
+  const mMaeTat = searchByTat(tatmae);
+  const mMaeRg  = searchByRg(rgmae);
+
+  // Auto-select on first open if unambiguous + blank field
+  tryAutoSelect(gi, row, mPaiTat, mPaiRg, mMaeTat, mMaeRg);
+
+  const sel = state.selections[gi] || { pai: null, mae: null };
+
+  return `
+  <div class="panels">
+    ${renderPanel('ph-pai-tat', 'PAI por Tatuagem', tatpai, mPaiTat, gi, 'pai', sel.pai)}
+    ${renderPanel('ph-pai-rg',  'PAI por Registro', rgpai,  mPaiRg,  gi, 'pai', sel.pai)}
+    ${renderPanel('ph-mae-tat', 'MÃE por Tatuagem', tatmae, mMaeTat, gi, 'mae', sel.mae)}
+    ${renderPanel('ph-mae-rg',  'MÃE por Registro', rgmae,  mMaeRg,  gi, 'mae', sel.mae)}
+  </div>
+  ${renderConsol(row, gi, sel)}`;
+}
+
+function renderPanel(headCls, title, query, matches, gi, role, selRow) {
+  const queryTag = query
+    ? `<span class="panel-query">${esc(query)}</span>`
+    : `<span class="no-query-tag">(vazio)</span>`;
+
+  let body = '';
+  if (!matches.length) {
+    body = `<div class="no-match-msg">${query ? 'Sem matches encontrados' : 'Sem valor para buscar'}</div>`;
+  } else {
+    const buildCard = (m, isTatPanel, isRgPanel) => {
+      const r = m.row;
+      const isSel = selRow && selRow === r;
+      const confCls = m.score >= 0.85 ? 'conf-hi' : m.score >= 0.60 ? 'conf-mid' : 'conf-lo';
+      const scCls   = scClass(m.score);
+      const srcCls  = r._source === '2016' ? 'src-2016' : 'src-alex';
+      const lineNum = r._lineNum != null ? `linha ${r._lineNum}` : '';
+      const tat  = r[BC.TATUAGEM]   != null ? String(r[BC.TATUAGEM])   : '—';
+      const pat  = r[BC.PATRIMONIO] != null ? String(r[BC.PATRIMONIO]) : '—';
+      const pai  = r[BC.PAI]        != null ? String(r[BC.PAI])        : '—';
+      const mae  = r[BC.MAE]        != null ? String(r[BC.MAE])        : '—';
+      const sexo = r[BC.SEXO]       != null ? String(r[BC.SEXO])       : '—';
+      const nasc = r[BC.NASCTO]     != null ? fmtDateOut(r[BC.NASCTO]) : '—';
+      const raca = r[BC.RACA]       != null ? String(r[BC.RACA])       : '—';
+      const pag  = r[BC.PAGINA]     != null ? `p.${String(r[BC.PAGINA])}` : '';
+      return `<div class="mc ${confCls}${isSel ? ' sel-card' : ''}">
+        <div class="mc-score">
+          <span class="sc ${scCls}">${pct(m.score)}</span>
+          <div class="sc-bar"><div class="sc-bar-fill ${scCls}" style="width:${Math.round(m.score*100)}%"></div></div>
+        </div>
+        <div class="mc-meta">
+          <span class="src ${srcCls}">${esc(r._sourceLabel)}</span>
+          ${lineNum ? `<span class="line-badge">${lineNum}</span>` : ''}
+          ${pag    ? `<span class="line-badge">${esc(pag)}</span>` : ''}
+        </div>
+        <div class="mc-body">
+          <div class="mc-fields">
+            <span class="fc ${isTatPanel ? 'hi' : ''}"><span class="fk">TAT</span>${esc(tat)}</span>
+            <span class="fc ${isRgPanel  ? 'hi' : ''}"><span class="fk">PATRIM</span>${esc(pat)}</span>
+            <span class="fc"><span class="fk">SEXO</span>${esc(sexo)}</span>
+            <span class="fc"><span class="fk">NASC</span>${esc(nasc)}</span>
+            <span class="fc"><span class="fk">PAI</span>${esc(pai)}</span>
+            <span class="fc"><span class="fk">MÃE</span>${esc(mae)}</span>
+            <span class="fc"><span class="fk">RAÇA</span>${esc(raca)}</span>
+          </div>
+          <div class="mc-actions">
+            <button class="use-btn ${isSel ? 'on' : ''}"
+              onclick="selectMatch(event,${gi},'${role}',${encodeRow(r)})">
+              ${isSel ? '✓ Em uso' : 'Usar'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+    };
+
+    const isTatPanel = title.includes('Tatuagem');
+    const isRgPanel  = title.includes('Registro');
+
+    // First card always visible
+    body += buildCard(matches[0], isTatPanel, isRgPanel);
+
+    // Remaining cards collapsed
+    if (matches.length > 1) {
+      const n = matches.length - 1;
+      body += `<button class="extra-toggle" onclick="toggleExtra(this)">▼ +${n} outro${n>1?'s':''} resultado${n>1?'s':''}</button>`;
+      body += `<div class="mc-extra hidden">`;
+      matches.slice(1).forEach(m => { body += buildCard(m, isTatPanel, isRgPanel); });
+      body += `</div>`;
+    }
+  }
+
+  return `<div class="panel">
+    <div class="panel-head ${headCls}">${title} ${queryTag}</div>
+    <div class="panel-body">${body}</div>
+  </div>`;
+}
+
+function encodeRow(r) {
+  // We need to pass the row to selectMatch. We'll store by birth index instead.
+  // Actually, let's use a global birth row registry.
+  return state.births.indexOf(r);
+}
+
+function selectMatch(e, gi, role, birthIdx) {
+  e.stopPropagation();
+  const r = state.births[birthIdx];
+  if (!state.selections[gi]) state.selections[gi] = { pai: null, mae: null };
+  state.selections[gi][role] = (state.selections[gi][role] === r) ? null : r;
+  document.getElementById('detail-' + gi).innerHTML = renderDetail(state.filtered[gi], gi);
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONSOLIDATED LINE
+// ─────────────────────────────────────────────────────────────
+function renderConsol(orig, gi, sel) {
+  const get = (row, col) => {
+    if (!row) return null;
+    const v = row[col];
+    return (v === null || v === undefined || v === '') ? null : String(v).trim();
+  };
+
+  // Original values (cleaned)
+  const o_tat   = cleanStr(get(orig, OC.TATUAGEM));
+  const o_reg   = cleanStr(get(orig, OC.REGISTRO));
+  const o_prop  = cleanStr(get(orig, OC.PROP_C));
+  const o_sexo  = cleanStr(get(orig, OC.SEXO));
+  const o_nasc  = fmtDateOut(orig[OC.NASCTO]);
+  const o_pel   = cleanStr(get(orig, OC.PELAGEM));
+  const o_cat   = cleanStr(get(orig, OC.CAT));
+  const o_tatpai= cleanStr(get(orig, OC.TAT_PAI));
+  const o_rgpai = cleanStr(get(orig, OC.RG_PAI));
+  const o_tatmae= cleanStr(get(orig, OC.TAT_MAE));
+  const o_rgmae = cleanStr(get(orig, OC.RG_MAE));
+  const o_pai   = cleanStr(get(orig, OC.PAI));
+  const o_mae   = cleanStr(get(orig, OC.MAE));
+
+  // Values from selections (RG: apply FM prefix if original has no letters)
+  const c_tatpai   = sel.pai ? cleanStr(get(sel.pai, BC.TATUAGEM))                  : null;
+  const c_rgpai    = sel.pai ? fmtRg(o_rgpai, get(sel.pai, BC.PATRIMONIO))          : null;
+  const c_raca_pai = sel.pai ? cleanStr(get(sel.pai, BC.RACA))                      : null;
+  const c_tatmae   = sel.mae ? cleanStr(get(sel.mae, BC.TATUAGEM))                  : null;
+  const c_rgmae    = sel.mae ? fmtRg(o_rgmae, get(sel.mae, BC.PATRIMONIO))          : null;
+  const c_raca_mae = sel.mae ? cleanStr(get(sel.mae, BC.RACA))                      : null;
+
+  const field = (label, orig, confirmed) => {
+    const isFilled   = confirmed !== null;
+    const isChanged  = isFilled && orig !== confirmed;
+    const display    = isFilled ? confirmed : orig;
+    const cls = isFilled ? (isChanged ? 'cf changed' : 'cf filled') : 'cf' + (!display ? ' missing-val' : '');
+    return `<div class="${cls}">
+      <span class="ck">${label}</span>
+      <span class="cv">${esc(display || '—')}</span>
+    </div>`;
+  };
+
+  const simpleField = (label, val) => {
+    const cls = val ? 'cf' : 'cf missing-val';
+    return `<div class="${cls}"><span class="ck">${label}</span><span class="cv">${esc(val || '—')}</span></div>`;
+  };
+
+  const html = `
+  <div class="consol">
+    <div class="consol-head">
+      <span>📄 Linha Consolidada
+        ${sel.pai ? '<span class="badge-info">PAI selecionado</span>' : ''}
+        ${sel.mae ? '<span class="badge-info">MÃE selecionada</span>' : ''}
+      </span>
+      <button class="copy-btn" onclick="copyConsol(${gi})">📋 Copiar TSV</button>
+    </div>
+    <div class="consol-body">
+      <div class="consol-fields">
+        ${simpleField('TATUAGEM', o_tat)}
+        ${simpleField('REGISTRO', o_reg)}
+        ${simpleField('PROPRIETÁRIO', o_prop)}
+        ${simpleField('SEXO', o_sexo)}
+        ${simpleField('NASCTO', o_nasc)}
+        ${simpleField('PELAGEM', o_pel)}
+        ${simpleField('CATEG', o_cat)}
+        <div style="width:1px;background:#dde;margin:0 4px;align-self:stretch"></div>
+        ${field('TAT_PAI',   o_tatpai, c_tatpai)}
+        ${field('RG_PAI',    o_rgpai,  c_rgpai)}
+        ${c_raca_pai ? field('RAÇA_PAI', null, c_raca_pai) : ''}
+        <div style="width:1px;background:#dde;margin:0 4px;align-self:stretch"></div>
+        ${field('TAT_MÃE',   o_tatmae, c_tatmae)}
+        ${field('RG_MÃE',    o_rgmae,  c_rgmae)}
+        ${c_raca_mae ? field('RAÇA_MÃE', null, c_raca_mae) : ''}
+        <div style="width:1px;background:#dde;margin:0 4px;align-self:stretch"></div>
+        ${simpleField('PAI', o_pai)}
+        ${simpleField('MÃE', o_mae)}
+      </div>
+    </div>
+  </div>`;
+  return html;
+}
+
+function copyConsol(gi) {
+  const orig = state.filtered[gi];
+  const sel  = state.selections[gi] || { pai: null, mae: null };
+  const getv = (row, col) => {
+    if (!row) return '';
+    const v = row[col];
+    return (v === null || v === undefined) ? '' : String(v).trim();
+  };
+
+  const row = orig.slice();
+  if (sel.pai) {
+    row[OC.TAT_PAI] = cleanStr(getv(sel.pai, BC.TATUAGEM));
+    row[OC.RG_PAI]  = fmtRg(getv(orig, OC.RG_PAI), getv(sel.pai, BC.PATRIMONIO));
+  }
+  if (sel.mae) {
+    row[OC.TAT_MAE] = cleanStr(getv(sel.mae, BC.TATUAGEM));
+    row[OC.RG_MAE]  = fmtRg(getv(orig, OC.RG_MAE), getv(sel.mae, BC.PATRIMONIO));
+  }
+
+  const tsv = row.map((v, i) => {
+    if (v === null || v === undefined) return '';
+    const s = (i === OC.NASCTO) ? fmtDateOut(v) : cleanStr(String(v));
+    return s.includes('\t') ? `"${s}"` : s;
+  }).join('\t');
+
+  const btn = event.target;
+  const orig_text = btn.textContent;
+  navigator.clipboard.writeText(tsv).then(() => {
+    btn.textContent = '✓ Copiado!';
+    btn.style.background = 'rgba(34,160,107,.6)';
+    setTimeout(() => { btn.textContent = orig_text; btn.style.background = ''; }, 1600);
+  }).catch(() => {
+    // Fallback: create temp textarea and copy via execCommand
+    const ta = document.createElement('textarea');
+    ta.value = tsv; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); btn.textContent = '✓ Copiado!'; setTimeout(() => { btn.textContent = orig_text; }, 1600); }
+    catch(_) { btn.textContent = '⚠ Copie manualmente'; setTimeout(() => { btn.textContent = orig_text; }, 2500); }
+    document.body.removeChild(ta);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// EXPAND / COLLAPSE
+// ─────────────────────────────────────────────────────────────
+function toggleDetail(gi) {
+  const was = state.expandedSet.has(gi);
+  // Close all currently open (one-at-a-time mode feels cleaner, optional)
+  // state.expandedSet.clear();  // comment out to allow multiple open
+  if (was) state.expandedSet.delete(gi);
+  else      state.expandedSet.add(gi);
+  renderTable();
+}
+
+let allExpanded = false;
+function toggleExpandAll() {
+  const start = state.page * state.PAGE_SIZE;
+  const end   = Math.min(start + state.PAGE_SIZE, state.filtered.length);
+  if (!allExpanded) {
+    for (let i = start; i < end; i++) state.expandedSet.add(i);
+    allExpanded = true;
+    document.getElementById('expand-all-btn').textContent = 'Recolher tudo';
+  } else {
+    for (let i = start; i < end; i++) state.expandedSet.delete(i);
+    allExpanded = false;
+    document.getElementById('expand-all-btn').textContent = 'Expandir visível';
+  }
+  renderTable();
+}
+
+// ─────────────────────────────────────────────────────────────
+// COLUMN FILTERS
+// ─────────────────────────────────────────────────────────────
+state.colFilters = {}; // col index (number) → string value
+
+let filterTimer = null;
+function onColFilter(col, val) {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    if (val.trim() === '') delete state.colFilters[col];
+    else state.colFilters[col] = val.trim().toUpperCase();
+    applyFilter();
+  }, 180);
+}
+
+function clearFilters() {
+  state.colFilters = {};
+  document.querySelectorAll('.fi').forEach(el => {
+    if (el.tagName === 'SELECT') el.value = '';
+    else el.value = '';
+  });
+  applyFilter();
+}
+
+function applyFilter() {
+  const filters = state.colFilters;
+  const cols = Object.keys(filters).map(Number);
+  if (!cols.length) {
+    state.filtered = state.original.slice();
+  } else {
+    state.filtered = state.original.filter(row => {
+      return cols.every(col => {
+        const v = row[col];
+        if (v === null || v === undefined || v === '') return false;
+        return String(v).toUpperCase().includes(filters[col]);
+      });
+    });
+  }
+  state.page = 0;
+  state.expandedSet.clear();
+  allExpanded = false;
+  document.getElementById('expand-all-btn').textContent = 'Expandir visível';
+  renderTable();
+  updatePagination();
+}
+
+// Populate select dropdowns after data is loaded
+function initFilterRow() {
+  const unique = (col) => {
+    const s = new Set();
+    state.original.forEach(r => { if (r[col]) s.add(String(r[col]).trim()); });
+    return [...s].sort();
+  };
+  // SEXO (col 10)
+  const sexoSel = document.querySelector('#filter-row select[data-col="10"]');
+  unique(10).forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sexoSel.appendChild(o); });
+  // PELAGEM (col 17)
+  const pelSel = document.querySelector('#filter-row select[data-col="17"]');
+  unique(17).forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; pelSel.appendChild(o); });
+}
+
+// ─────────────────────────────────────────────────────────────
+// PAGINATION
+// ─────────────────────────────────────────────────────────────
+function lastPage() {
+  return Math.max(0, Math.ceil(state.filtered.length / state.PAGE_SIZE) - 1);
+}
+
+function goPage(p) {
+  const lp = lastPage();
+  p = Math.max(0, Math.min(p, lp));
+  if (p === state.page) return;
+  state.page = p;
+  state.expandedSet.clear();
+  allExpanded = false;
+  document.getElementById('expand-all-btn').textContent = 'Expandir visível';
+  renderTable();
+  updatePagination();
+  document.getElementById('table-wrap').scrollTop = 0;
+}
+
+function updatePagination() {
+  const lp    = lastPage();
+  const totalPages = lp + 1;
+  const inp = document.getElementById('page-input');
+  inp.value = state.page + 1;
+  inp.max   = totalPages;
+  document.getElementById('page-total').textContent =
+    `de ${totalPages} (${state.filtered.length.toLocaleString('pt-BR')} animais)`;
+  document.getElementById('btn-first').disabled = state.page === 0;
+  document.getElementById('btn-prev').disabled  = state.page === 0;
+  document.getElementById('btn-next').disabled  = state.page >= lp;
+  document.getElementById('btn-last').disabled  = state.page >= lp;
+}
+
+function onPageInput(e) {
+  if (e.key !== 'Enter' && e.type !== 'blur') return;
+  const val = parseInt(e.target.value, 10);
+  if (!isNaN(val) && val >= 1) goPage(val - 1);
+  else e.target.value = state.page + 1; // reset invalid
+}
+</script>
+</body>
+</html>
